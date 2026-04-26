@@ -5,7 +5,13 @@ from pathlib import Path
 import time
 import shutil
 from typing import AsyncGenerator, List, Optional, Tuple
-from gradio import ChatMessage
+
+# Gradio 6.x compatibility - ChatMessage handling
+try:
+    from gradio import ChatMessage
+except ImportError:
+    # Fallback for older versions
+    ChatMessage = None
 
 
 class ChatInterface:
@@ -140,7 +146,11 @@ class ChatInterface:
                         content = event["process"]["messages"][-1].content
                         if content:
                             content = re.sub(r"temp/[^\s]*", "", content)
-                            chat_history.append(ChatMessage(role="assistant", content=content))
+                            # Gradio 6.x compatibility
+                            if ChatMessage:
+                                chat_history.append(ChatMessage(role="assistant", content=content))
+                            else:
+                                chat_history.append({"role": "assistant", "content": content})
                             yield chat_history, self.display_file_path, ""
 
                     elif "execute" in event:
@@ -154,34 +164,52 @@ class ChatInterface:
                                     line.strip() for line in str(tool_result).splitlines()
                                 ).strip()
                                 metadata["description"] = formatted_result
-                                chat_history.append(
-                                    ChatMessage(
-                                        role="assistant",
-                                        content=formatted_result,
-                                        metadata=metadata,
+                                # Gradio 6.x compatibility
+                                if ChatMessage:
+                                    chat_history.append(
+                                        ChatMessage(
+                                            role="assistant",
+                                            content=formatted_result,
+                                            metadata=metadata,
+                                        )
                                     )
-                                )
+                                else:
+                                    chat_history.append(
+                                        {"role": "assistant", "content": formatted_result, "metadata": metadata}
+                                    )
 
                             # For image_visualizer, use display path
                             if tool_name == "image_visualizer":
                                 self.display_file_path = tool_result["image_path"]
-                                chat_history.append(
-                                    ChatMessage(
-                                        role="assistant",
-                                        # content=gr.Image(value=self.display_file_path),
-                                        content={"path": self.display_file_path},
+                                # Gradio 6.x compatibility
+                                if ChatMessage:
+                                    chat_history.append(
+                                        ChatMessage(
+                                            role="assistant",
+                                            content={"path": self.display_file_path},
+                                        )
                                     )
-                                )
+                                else:
+                                    chat_history.append(
+                                        {"role": "assistant", "content": {"path": self.display_file_path}}
+                                    )
 
                             yield chat_history, self.display_file_path, ""
 
         except Exception as e:
-            chat_history.append(
-                ChatMessage(
-                    role="assistant", content=f"❌ Error: {str(e)}", metadata={"title": "Error"}
+            error_content = f"❌ Error: {str(e)}"
+            # Gradio 6.x compatibility
+            if ChatMessage:
+                chat_history.append(
+                    ChatMessage(
+                        role="assistant", content=error_content, metadata={"title": "Error"}
+                    )
                 )
-            )
-            yield chat_history, self.display_file_path
+            else:
+                chat_history.append(
+                    {"role": "assistant", "content": error_content, "metadata": {"title": "Error"}}
+                )
+            yield chat_history, self.display_file_path, ""
 
 
 def create_demo(agent, tools_dict):
@@ -214,7 +242,6 @@ def create_demo(agent, tools_dict):
                         container=True,
                         show_label=True,
                         elem_classes="chat-box",
-                        type="messages",
                         label="Agent",
                         avatar_images=(
                             None,

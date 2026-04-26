@@ -11,7 +11,7 @@ from datasets import load_dataset
 
 # Initialize global variables
 logger = logging.getLogger('benchmark')
-model_name = 'chatgpt-4o-latest'  # default value
+model_name = 'gpt-4o'  # default value
 temperature = 0.2  # default value
 log_filename = None
 
@@ -40,11 +40,27 @@ def encode_image(image_path):
         return None
 
 def encode_image_url(image_url):
-    """Encode image from URL to base64 string"""
+    """Encode image from URL to base64 string with proper headers + retry"""
     try:
-        response = requests.get(image_url)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+            "Referer": "https://www.eurorad.org/",
+            "Connection": "keep-alive"
+        }
+
+        session = requests.Session()
+        response = session.get(image_url, headers=headers, timeout=10)
+
+        # If still blocked, try without params (sometimes ?itok breaks it)
+        if response.status_code == 403:
+            clean_url = image_url.split("?")[0]
+            response = session.get(clean_url, headers=headers, timeout=10)
+
         response.raise_for_status()
-        return base64.b64encode(response.content).decode('utf-8')
+
+        return base64.b64encode(response.content).decode("utf-8")
+
     except Exception as e:
         print(f"Error encoding image from URL {image_url}: {str(e)}")
         return None
